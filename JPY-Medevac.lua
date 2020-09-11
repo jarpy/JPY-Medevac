@@ -33,6 +33,164 @@ local function describe(o)
   end
 end
 
+-- Modified version of mist.teleportToPoint that accepts "newGroupName"
+-- when cloning a group.
+function JPYMedevac.teleportToPoint(vars)
+  --log:info(vars)
+  local point = vars.point
+  local gpName
+  if vars.gpName then
+    gpName = vars.gpName
+  elseif vars.groupName then
+    gpName = vars.groupName
+  else
+    --log:error('Missing field groupName or gpName in variable table')
+  end
+
+  local action = vars.action
+  local newGroupName = vars.newGroupName
+
+  local disperse = vars.disperse or false
+  local maxDisp = vars.maxDisp or 200
+  local radius = vars.radius or 0
+  local innerRadius = vars.innerRadius
+
+  local route = vars.route
+  local dbData = false
+
+  local newGroupData
+  if gpName and not vars.groupData then
+    if string.lower(action) == 'teleport' or string.lower(action) == 'tele' then
+      newGroupData = mist.getCurrentGroupData(gpName)
+    elseif string.lower(action) == 'respawn' then
+      newGroupData = mist.getGroupData(gpName)
+      dbData = true
+    elseif string.lower(action) == 'clone' then
+      newGroupData = mist.getGroupData(gpName)
+      newGroupData.clone = 'order66'
+      dbData = true
+    else
+      action = 'tele'
+      newGroupData = mist.getCurrentGroupData(gpName)
+    end
+  else
+    action = 'tele'
+    newGroupData = vars.groupData
+  end
+
+  --log:info('get Randomized Point')
+  local diff = {x = 0, y = 0}
+  local newCoord, origCoord
+  local validTerrain = {'LAND', 'ROAD', 'SHALLOW_WATER', 'WATER', 'RUNWAY'}
+  if string.lower(newGroupData.category) == 'ship' then
+    validTerrain = {'SHALLOW_WATER' , 'WATER'}
+  elseif string.lower(newGroupData.category) == 'vehicle' then
+    validTerrain = {'LAND', 'ROAD'}
+  end
+  local offsets = {}
+  if point and radius >= 0 then
+    local valid = false
+    for i = 1, 100	do
+      newCoord = mist.getRandPointInCircle(point, radius, innerRadius)
+      if mist.isTerrainValid(newCoord, validTerrain) then
+        origCoord = mist.utils.deepCopy(newCoord)
+        diff = {x = (newCoord.x - newGroupData.units[1].x), y = (newCoord.y - newGroupData.units[1].y)}
+        valid = true
+        break
+      end
+    end
+    if valid == false then
+      --log:error('Point supplied in variable table is not a valid coordinate. Valid coords: $1', validTerrain)
+      return false
+    end
+  end
+
+  if not newGroupData.country and mist.DBs.groupsByName[newGroupData.groupName].country then
+    newGroupData.country = mist.DBs.groupsByName[newGroupData.groupName].country
+  end
+
+  if not newGroupData.category and mist.DBs.groupsByName[newGroupData.groupName].category then
+    newGroupData.category = mist.DBs.groupsByName[newGroupData.groupName].category
+  end
+  --log:info(point)
+
+  for unitNum, unitData in pairs(newGroupData.units) do
+    --log:info(unitNum)
+
+    if disperse then
+      local unitCoord
+      if maxDisp and type(maxDisp) == 'number' and unitNum ~= 1 then
+        for i = 1, 100 do
+          unitCoord = mist.getRandPointInCircle(origCoord, maxDisp)
+          if mist.isTerrainValid(unitCoord, validTerrain) == true then
+            --log:warn('Index: $1, Itered: $2. AT: $3', unitNum, i, unitCoord)
+            break
+          end
+        end
+      --else
+      --newCoord = mist.getRandPointInCircle(zone.point, zone.radius)
+      end
+
+      if unitNum == 1 then
+        unitCoord = mist.utils.deepCopy(newCoord)
+      end
+
+      if unitCoord then
+        newGroupData.units[unitNum].x = unitCoord.x
+        newGroupData.units[unitNum].y = unitCoord.y
+      end
+    else -- if not disperse
+      newGroupData.units[unitNum].x = unitData.x + diff.x
+      newGroupData.units[unitNum].y = unitData.y + diff.y
+    end
+
+    if point then
+      if (newGroupData.category == 'plane' or newGroupData.category == 'helicopter')	then
+        if point.z and point.y > 0 and point.y > land.getHeight({newGroupData.units[unitNum].x, newGroupData.units[unitNum].y}) + 10 then
+          newGroupData.units[unitNum].alt = point.y
+          --log:info('far enough from ground')
+        else
+          if newGroupData.category == 'plane' then
+            --log:info('setNewAlt')
+            newGroupData.units[unitNum].alt = land.getHeight({newGroupData.units[unitNum].x, newGroupData.units[unitNum].y}) + math.random(300, 9000)
+          else
+            newGroupData.units[unitNum].alt = land.getHeight({newGroupData.units[unitNum].x, newGroupData.units[unitNum].y}) + math.random(200, 3000)
+          end
+        end
+      end
+    end
+  end
+
+  if newGroupData.start_time then
+    newGroupData.startTime = newGroupData.start_time
+  end
+
+  if newGroupData.startTime and newGroupData.startTime ~= 0 and dbData == true then
+    local timeDif = timer.getAbsTime() - timer.getTime0()
+    if timeDif > newGroupData.startTime then
+      newGroupData.startTime = 0
+    else
+      newGroupData.startTime = newGroupData.startTime - timeDif
+    end
+  end
+
+  if route then
+    newGroupData.route = route
+  end
+
+  if newGroupName then
+    newGroupData.groupName = newGroupName
+  end
+
+  --log:info(newGroupData)
+  --mist.debug.writeData(mist.utils.serialize,{'teleportToPoint', newGroupData}, 'newGroupData.lua')
+  if string.lower(newGroupData.category) == 'static' then
+    --log:info(newGroupData)
+    return mist.dynAddStatic(newGroupData)
+  end
+  return mist.dynAdd(newGroupData)
+end
+
 
 -- Write a specially formatted line to the log which will be picked up by the
 -- external SRS integration system and transmitted over SRS by text-to-speech.
@@ -141,10 +299,11 @@ end
 
 
 -- Clone the given group (name) to a radius around the given point.
-local function cloneGroupNearPoint(sourceGroupName, point, radius, innerRadius)
-  local newGroup = mist.teleportToPoint(
+local function cloneGroupNearPoint(sourceGroupName, newGroupName, point, radius, innerRadius)
+  local newGroup = JPYMedevac.teleportToPoint(
     {
       groupName = sourceGroupName,
+      newGroupName = newGroupName,
       point = point,
       action = "clone",
       radius = radius,
@@ -168,54 +327,54 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   local rescuePoint = mist.getRandomPointInZone(zone)
 
   local rescueGroup = cloneGroupNearPoint(
-    sourceGroupName,
+    sourceGroupName, "Desperadoes",
     rescuePoint
   )
   medevac.injectWoundedGroup(rescueGroup.name)
 
   -- Possibly spawn a truck-mounted anti-aircraft gun near the LZ.
   local enemyAA = maybe(30, cloneGroupNearPoint)(
-    "hostile-aa-truck-template", rescuePoint, 1000, 300
+    "hostile-aa-truck", nil,
+    rescuePoint, 1000, 300
   )
 
-  -- Spawn up to 3 squads of enemy infantry, possibly with an organic RPG
-  -- and/or MANPADS in each squad.
+  --- FIXME: no spawning in water!!!!!!!!!!!!!
+  -- Spawn up to 3 squads of enemy infantry.
   local squadCount = 0
-  local rpgCount = 0
-  local manpadsCount = 0
+  local rpgSquadCount = 0
+  local manpadsSquadCount = 0
   for squadNumber = 1, 3, 1 do
-    local squadPoint = mist.getRandPointInCircle(rescuePoint, 1000, 200)
-    local squad = maybe(80, cloneGroupNearPoint)(
-      "hostile-infantry-template", squadPoint, 0, 0
+    local squad = maybe(60, cloneGroupNearPoint)(
+      "hostile-infantry", nil,
+      rescuePoint, 1000, 2000
     )
-    if squad ~= nil then
+    if squad then
       squadCount = squadCount + 1
     end
+  end
 
-
-    --- FIXME: no spawning in water!!!!!!!!!!!!!
-
-
-    -- Add an RPG to the infantry squad?
-    if squad ~= nil then
-      RPG = maybe(30, cloneGroupNearPoint)(
-        "hostile-infantry-rpg-template", squadPoint, 10, 3
-      )
+  -- Spawn up to 2 squads of enemy infantry with organic RPG.
+  for squadNumber = 1, 2, 1 do
+    local squadPoint = mist.getRandPointInCircle(rescuePoint, 1000, 200)
+    local rpgSquad = maybe(20, cloneGroupNearPoint)(
+      "hostile-infantry-rpg", nil,
+      squadPoint, 0, 0
+    )
+    if rpgSquad then
+      rpgSquadCount = rpgSquadCount + 1
     end
-    if RPG ~= nil then
-      rpgCount = rpgCount + 1
-    end
+  end
 
-    -- How about a MANPADS? (shudder)
-    if squad ~= nil then
-      MANPADS = maybe(5, cloneGroupNearPoint)(
-        "hostile-infantry-manpads-template", squadPoint, 10, 3
-      )
+  -- How about a MANPADS squad? (shudder)
+  for squadNumber = 1, 2, 1 do
+    local squadPoint = mist.getRandPointInCircle(rescuePoint, 1000, 200)
+    local manpadsSquad = maybe(5, cloneGroupNearPoint)(
+      "hostile-infantry-manpads", nil,
+      squadPoint, 0, 0
+    )
+    if manpadsSquad then
+      manpadsSquadCount = manpadsSquadCount + 1
     end
-    if MANPADS ~= nil then
-      manpadsCount = manpadsCount + 1
-    end
-
   end
 
   -- Inform the calling heli of the situtation over SRS.
@@ -230,11 +389,11 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
     srsTransmit("Multiple enemy infantry squads at LZ.")
   end
 
-  if rpgCount > 0 then
+  if rpgSquadCount > 0 then
     srsTransmit("Be advised. RPG sighted.")
   end
 
-  if manpadsCount > 0 then
+  if manpadsSquadCount > 0 then
     srsTransmit("Manpads reported. Exercise extreme caution.")
   end
 end
