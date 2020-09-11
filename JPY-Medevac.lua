@@ -18,6 +18,22 @@ JPYMedevac.numberOfRescueZones = 6 -- Total number of rescue zones defined in th
 JPYMedevac.usedRescueZones = {} -- Map of str->bool saying which zones have been used already.
 JPYMedevac.mashCallsign = "Cathedral"
 
+JPYMedevac.rescueCallsigns = {
+  "Pony",
+  "Stubby",
+  "Noodles",
+  "Duckey",
+  "Avalon",
+  "Bongo",
+  "Hotsauce",
+}
+
+local function getRandomRescueCallsign()
+  local index = math.random(#JPYMedevac.rescueCallsigns)
+  local callsign = JPYMedevac.rescueCallsigns[index]
+  table.remove(JPYMedevac.rescueCallsigns, index)
+  return callsign
+end
 
 -- A debugging function to create text representations of objects.
 local function describe(o)
@@ -327,7 +343,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   local rescuePoint = mist.getRandomPointInZone(zone)
 
   local rescueGroup = cloneGroupNearPoint(
-    sourceGroupName, "Desperadoes",
+    sourceGroupName, getRandomRescueCallsign(),
     rescuePoint
   )
   medevac.injectWoundedGroup(rescueGroup.name)
@@ -344,7 +360,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   local rpgSquadCount = 0
   local manpadsSquadCount = 0
   for squadNumber = 1, 3, 1 do
-    local squad = maybe(60, cloneGroupNearPoint)(
+    local squad = maybe(40, cloneGroupNearPoint)(
       "hostile-infantry", nil,
       rescuePoint, 1000, 2000
     )
@@ -378,15 +394,18 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   end
 
   -- Inform the calling heli of the situtation over SRS.
-  SRSVectorToRescueGroup(rescueGroup.name, heliUnitName)
+  SRSVectorToRescueGroup(
+    rescueGroup.name, heliUnitName,
+    string.format("%s requests medevac. ", rescueGroup.name))
+
   if enemyAA ~= nil then
-    srsTransmit("Caution: Enemy Zeus truck spotted.")
+    srsTransmit("Caution: Anti-aircraft truck spotted.")
   end
 
   if squadCount == 1 then
-    srsTransmit("Enemy infantry reported near LZ.")
+    srsTransmit("Enemy infantry reported.")
   elseif squadCount > 1 then
-    srsTransmit("Multiple enemy infantry squads at LZ.")
+    srsTransmit("Multiple enemy infantry squads in contact.")
   end
 
   if rpgSquadCount > 0 then
@@ -399,7 +418,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
 end
 
 
-function SRSVectorToRescueGroup(groupName, heliUnitName)
+function SRSVectorToRescueGroup(groupName, heliUnitName, preamble)
   local heli = medevac.getSARHeli(heliUnitName)
   if heli == nil then
     return
@@ -414,9 +433,13 @@ function SRSVectorToRescueGroup(groupName, heliUnitName)
   })
 
   -- FIXME: use string.format
+  if preamble == nil then
+    preamble = ""
+  end
+
   srsTransmit(
     heliUnitName .. ", " .. JPYMedevac.mashCallsign .. ". " ..
-    -- "Assist " .. groupName .. ". " ..
+    preamble ..
     " Fly heading, " .. BR[1] .. ". Distance, " .. BR[2] .. " kilometers."
   )
 end
@@ -439,7 +462,9 @@ function SRSVectorToClosestRescueGroup(heliUnitName)
     return
   end
 
-  SRSVectorToRescueGroup(groupName, heliUnitName)
+  SRSVectorToRescueGroup(
+    groupName, heliUnitName,
+    string.format("Nearest unit, %s. ", groupName))
 end
 
 -- A modified version of addMedevacMenuItem.
