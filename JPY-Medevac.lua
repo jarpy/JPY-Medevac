@@ -340,11 +340,11 @@ local function SRSVectorToGroup(groupName, heliUnitName, preamble)
     metric = true,
   })
 
-  -- FIXME: use string.format
   if preamble == nil then
     preamble = ""
   end
 
+  -- FIXME: use string.format
   srsTransmit(
     heliUnitName .. ", " .. JPYMedevac.mashCallsign .. ". " ..
     preamble ..
@@ -361,6 +361,7 @@ end
 local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   local zone = getRandomRescueZone()
   local rescuePoint = mist.getRandomPointInZone(zone)
+  local enemyCenterPoint = mist.getRandPointInCircle(rescuePoint, 500, 200)
 
   local rescueGroup = cloneGroupNearPoint(
     sourceGroupName, getRandomRescueCallsign(),
@@ -377,7 +378,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   for squadNumber = 1, 3, 1 do
     local squad = maybe(20, cloneGroupNearPoint)(
       "hostile-infantry", nil,
-      rescuePoint, 350, 150)
+      enemyCenterPoint, 100, 0)
     if squad then
       squadCount = squadCount + 1
     end
@@ -387,7 +388,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   for squadNumber = 1, 3, 1 do
     local squad = maybe(20, cloneGroupNearPoint)(
       "hostile-infantry-saw", nil,
-      rescuePoint, 350, 150)
+      enemyCenterPoint, 100, 0)
     if squad then
       sawSquadCount = sawSquadCount + 1
     end
@@ -397,7 +398,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   for squadNumber = 1, 2, 1 do
     local rpgSquad = maybe(20, cloneGroupNearPoint)(
       "hostile-infantry-rpg", nil,
-      rescuePoint, 350, 150)
+      enemyCenterPoint, 100, 0)
     if rpgSquad then
       rpgSquadCount = rpgSquadCount + 1
     end
@@ -407,7 +408,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   for squadNumber = 1, 2, 1 do
     local manpadsSquad = maybe(5, cloneGroupNearPoint)(
       "hostile-infantry-manpads", nil,
-      rescuePoint, 350, 150)
+      enemyCenterPoint, 100, 0)
     if manpadsSquad then
       manpadsSquadCount = manpadsSquadCount + 1
     end
@@ -416,8 +417,7 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   -- Possibly spawn a truck-mounted anti-aircraft gun.
   local enemyAA = maybe(20, cloneGroupNearPoint)(
     "hostile-aa-truck", nil,
-    rescuePoint, 1000, 300
-  )
+    enemyCenterPoint, 100, 0)
 
   -- Inform the calling heli of the situtation over SRS.
   SRSVectorToGroup(
