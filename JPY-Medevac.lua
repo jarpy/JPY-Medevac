@@ -210,6 +210,16 @@ function JPYMedevac.teleportToPoint(vars)
   return mist.dynAdd(newGroupData)
 end
 
+-- Given an angle in degrees, return an approximate compass direction like
+-- "north-west".
+local function degreesToCompassRose(degrees)
+  env.info("Degrees: " .. degrees)
+  local directions = {"N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW","N"}
+  local index = math.floor(degrees / 22.5)+1
+  env.info("Index: " .. index)
+  return directions[index]
+end
+
 -- Write a specially formatted line to the log which will be picked up by the
 -- external SRS integration system and transmitted over SRS by text-to-speech.
 local function srsTransmit(text)
@@ -352,6 +362,20 @@ local function SRSVectorToGroup(groupName, heliUnitName, preamble)
   )
 end
 
+local function getAnglePointToPoint(point1, point2)
+  local vec = {
+    x = point2.x - point1.x,
+    y = 0,
+    z = point2.y - point1.y,
+  }
+  env.info("vec: " .. mist.utils.tableShow(vec))
+  local correctedDirection = mist.utils.getDir(vec, point1)
+  env.info("correctedDirection: " .. correctedDirection)
+  local az = mist.utils.round(mist.utils.toDegree(correctedDirection), 0)
+  env.info("az: " .. az)
+  return az
+end
+
 -- Given an existing group (name), spawn an active copy of that group into a
 -- randomly selected rescue zone and set up the new group as a rescue target.
 --
@@ -363,10 +387,23 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
   local rescuePoint = mist.getRandomPointInZone(zone)
   local enemyCenterPoint = mist.getRandPointInCircle(rescuePoint, 500, 200)
 
+  local enemyDirection = getAnglePointToPoint(
+    rescuePoint, enemyCenterPoint)
+  env.info("enemyDirection: " .. enemyDirection)
+
+  local enemyDistance = mist.utils.get2DDist(
+    mist.utils.makeVec3(rescuePoint, 0),
+    enemyCenterPoint)
+
+  env.info("rescuePoint: " .. mist.utils.tableShow(rescuePoint))
+  env.info("enemyCenterPoint: " .. mist.utils.tableShow(enemyCenterPoint))
+  env.info("Radians: " .. enemyDirection)
+  env.info("GGGGGGGGGGGGGGGGGGGGGGGGGGGGG: " ..
+    degreesToCompassRose(enemyDirection))
+
   local rescueGroup = cloneGroupNearPoint(
     sourceGroupName, getRandomRescueCallsign(),
-    rescuePoint
-  )
+    rescuePoint)
   medevac.injectWoundedGroup(rescueGroup.name)
 
   local squadCount = 0
@@ -424,10 +461,6 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
     rescueGroup.name, heliUnitName,
     string.format("%s, requests medevac. ", rescueGroup.name))
 
-  if enemyAA ~= nil then
-    srsTransmit("Caution: Anti-aircraft truck spotted.")
-  end
-
   if squadCount + sawSquadCount == 1 then
     srsTransmit("Enemy infantry reported.")
   elseif squadCount + sawSquadCount > 1 then
@@ -436,6 +469,10 @@ local function cloneGroupForRescue(sourceGroupName, heliUnitName)
 
   if rpgSquadCount > 0 then
     srsTransmit("Be advised. RPG sighted.")
+  end
+
+  if enemyAA ~= nil then
+    srsTransmit("Caution: Anti-aircraft truck spotted.")
   end
 
   if manpadsSquadCount > 0 then
