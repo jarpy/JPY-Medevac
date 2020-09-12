@@ -25,7 +25,10 @@ JPYMedevac.rescueCallsigns = {
   "Duckey",
   "Avalon",
   "Bongo",
-  "Hotsauce",
+  "Hot-Sauce",
+  "Cane-Toad",
+  "Gumball",
+  "Woofer",
 }
 
 local function getRandomRescueCallsign()
@@ -207,25 +210,21 @@ function JPYMedevac.teleportToPoint(vars)
   return mist.dynAdd(newGroupData)
 end
 
-
 -- Write a specially formatted line to the log which will be picked up by the
 -- external SRS integration system and transmitted over SRS by text-to-speech.
 local function srsTransmit(text)
   env.info("SAY=" .. text)
 end
 
-
 local function useRescueZone(zoneName)
   env.info("Marking rescue zone '" .. zoneName .. "' as used.")
   JPYMedevac.usedRescueZones[zoneName] = true
 end
 
-
 local function resetRescueZones(zoneName)
   env.info("Resetting rescue zones.")
   JPYMedevac.usedRescueZones = {}
 end
-
 
 local function rescueZoneUsed(zoneName)
   if JPYMedevac.usedRescueZones[zoneName] == true then
@@ -234,7 +233,6 @@ local function rescueZoneUsed(zoneName)
     return false
   end
 end
-
 
 local function allRescueZonesUsed(zoneName)
   local counter = 0
@@ -252,7 +250,6 @@ local function allRescueZonesUsed(zoneName)
     return false
   end
 end
-
 
 local function getRandomRescueZone()
   env.info(describe(JPYMedevac.usedRescueZones))
@@ -277,7 +274,6 @@ local function getRandomRescueZone()
   return chosenZoneName
 end
 
-
 local function splitString(string)
   local sep = "%s"
   local tokens = {}
@@ -286,7 +282,6 @@ local function splitString(string)
   end
   return tokens
 end
-
 
 -- Like mist.getBRString but returns a two element table of bearing, range.
 local function getBR(argMap)
@@ -325,100 +320,13 @@ local function cloneGroupNearPoint(sourceGroupName, newGroupName, point, radius,
       radius = radius,
       innerRadius = innerRadius,
       disperse = true,
-      maxDisp = 50,
+      maxDisp = 10,
     }
   )
   return newGroup
 end
 
-
--- Given an existing group (name), spawn an active copy of that group into a
--- randomly selected rescue zone and set up the new group as a rescue target.
---
--- Also requires the name of the SAR heli unit that is making the request.
---
--- Chooses a random location within the zone for the exact spawn point.
-local function cloneGroupForRescue(sourceGroupName, heliUnitName)
-  local zone = getRandomRescueZone()
-  local rescuePoint = mist.getRandomPointInZone(zone)
-
-  local rescueGroup = cloneGroupNearPoint(
-    sourceGroupName, getRandomRescueCallsign(),
-    rescuePoint
-  )
-  medevac.injectWoundedGroup(rescueGroup.name)
-
-  -- Possibly spawn a truck-mounted anti-aircraft gun near the LZ.
-  local enemyAA = maybe(30, cloneGroupNearPoint)(
-    "hostile-aa-truck", nil,
-    rescuePoint, 1000, 300
-  )
-
-  --- FIXME: no spawning in water!!!!!!!!!!!!!
-  -- Spawn up to 3 squads of enemy infantry.
-  local squadCount = 0
-  local rpgSquadCount = 0
-  local manpadsSquadCount = 0
-  for squadNumber = 1, 3, 1 do
-    local squad = maybe(40, cloneGroupNearPoint)(
-      "hostile-infantry", nil,
-      rescuePoint, 1000, 2000
-    )
-    if squad then
-      squadCount = squadCount + 1
-    end
-  end
-
-  -- Spawn up to 2 squads of enemy infantry with organic RPG.
-  for squadNumber = 1, 2, 1 do
-    local squadPoint = mist.getRandPointInCircle(rescuePoint, 1000, 200)
-    local rpgSquad = maybe(20, cloneGroupNearPoint)(
-      "hostile-infantry-rpg", nil,
-      squadPoint, 0, 0
-    )
-    if rpgSquad then
-      rpgSquadCount = rpgSquadCount + 1
-    end
-  end
-
-  -- How about a MANPADS squad? (shudder)
-  for squadNumber = 1, 2, 1 do
-    local squadPoint = mist.getRandPointInCircle(rescuePoint, 1000, 200)
-    local manpadsSquad = maybe(5, cloneGroupNearPoint)(
-      "hostile-infantry-manpads", nil,
-      squadPoint, 0, 0
-    )
-    if manpadsSquad then
-      manpadsSquadCount = manpadsSquadCount + 1
-    end
-  end
-
-  -- Inform the calling heli of the situtation over SRS.
-  SRSVectorToRescueGroup(
-    rescueGroup.name, heliUnitName,
-    string.format("%s requests medevac. ", rescueGroup.name))
-
-  if enemyAA ~= nil then
-    srsTransmit("Caution: Anti-aircraft truck spotted.")
-  end
-
-  if squadCount == 1 then
-    srsTransmit("Enemy infantry reported.")
-  elseif squadCount > 1 then
-    srsTransmit("Multiple enemy infantry squads in contact.")
-  end
-
-  if rpgSquadCount > 0 then
-    srsTransmit("Be advised. RPG sighted.")
-  end
-
-  if manpadsSquadCount > 0 then
-    srsTransmit("Manpads reported. Exercise extreme caution.")
-  end
-end
-
-
-function SRSVectorToRescueGroup(groupName, heliUnitName, preamble)
+local function SRSVectorToGroup(groupName, heliUnitName, preamble)
   local heli = medevac.getSARHeli(heliUnitName)
   if heli == nil then
     return
@@ -444,9 +352,100 @@ function SRSVectorToRescueGroup(groupName, heliUnitName, preamble)
   )
 end
 
+-- Given an existing group (name), spawn an active copy of that group into a
+-- randomly selected rescue zone and set up the new group as a rescue target.
+--
+-- Also requires the name of the SAR heli unit that is making the request.
+--
+-- Chooses a random location within the zone for the exact spawn point.
+local function cloneGroupForRescue(sourceGroupName, heliUnitName)
+  local zone = getRandomRescueZone()
+  local rescuePoint = mist.getRandomPointInZone(zone)
+
+  local rescueGroup = cloneGroupNearPoint(
+    sourceGroupName, getRandomRescueCallsign(),
+    rescuePoint
+  )
+  medevac.injectWoundedGroup(rescueGroup.name)
+
+  local squadCount = 0
+  local sawSquadCount = 0
+  local rpgSquadCount = 0
+  local manpadsSquadCount = 0
+
+  -- Spawn up to 3 squads of enemy riflemen.
+  for squadNumber = 1, 3, 1 do
+    local squad = maybe(20, cloneGroupNearPoint)(
+      "hostile-infantry", nil,
+      rescuePoint, 350, 150)
+    if squad then
+      squadCount = squadCount + 1
+    end
+  end
+
+  -- Spawn up to 3 squads of enemy infantry with a SAW.
+  for squadNumber = 1, 3, 1 do
+    local squad = maybe(20, cloneGroupNearPoint)(
+      "hostile-infantry-saw", nil,
+      rescuePoint, 350, 150)
+    if squad then
+      sawSquadCount = sawSquadCount + 1
+    end
+  end
+
+  -- Spawn up to 2 squads of enemy infantry with organic RPG.
+  for squadNumber = 1, 2, 1 do
+    local rpgSquad = maybe(20, cloneGroupNearPoint)(
+      "hostile-infantry-rpg", nil,
+      rescuePoint, 350, 150)
+    if rpgSquad then
+      rpgSquadCount = rpgSquadCount + 1
+    end
+  end
+
+  -- How about a MANPADS squad? (shudder)
+  for squadNumber = 1, 2, 1 do
+    local manpadsSquad = maybe(5, cloneGroupNearPoint)(
+      "hostile-infantry-manpads", nil,
+      rescuePoint, 350, 150)
+    if manpadsSquad then
+      manpadsSquadCount = manpadsSquadCount + 1
+    end
+  end
+
+  -- Possibly spawn a truck-mounted anti-aircraft gun.
+  local enemyAA = maybe(20, cloneGroupNearPoint)(
+    "hostile-aa-truck", nil,
+    rescuePoint, 1000, 300
+  )
+
+  -- Inform the calling heli of the situtation over SRS.
+  SRSVectorToGroup(
+    rescueGroup.name, heliUnitName,
+    string.format("%s, requests medevac. ", rescueGroup.name))
+
+  if enemyAA ~= nil then
+    srsTransmit("Caution: Anti-aircraft truck spotted.")
+  end
+
+  if squadCount + sawSquadCount == 1 then
+    srsTransmit("Enemy infantry reported.")
+  elseif squadCount + sawSquadCount > 1 then
+    srsTransmit("Multiple enemy infantry squads in contact.")
+  end
+
+  if rpgSquadCount > 0 then
+    srsTransmit("Be advised. RPG sighted.")
+  end
+
+  if manpadsSquadCount > 0 then
+    srsTransmit("Manpads reported. Exercise extreme caution.")
+  end
+end
+
 -- Request vector to closest rescue group from the controller.
 -- Response comes over SRS radio.
-function SRSVectorToClosestRescueGroup(heliUnitName)
+local function SRSVectorToClosestRescueGroup(heliUnitName)
   local heli = medevac.getSARHeli(heliUnitName)
   if heli == nil then
     return
@@ -454,24 +453,31 @@ function SRSVectorToClosestRescueGroup(heliUnitName)
 
   local groupName = medevac.getClosestGroupName(heli)
   if groupName == nil then
-    -- FIXME: Use string.format()
     srsTransmit(
-      heliUnitName .. ", " .. JPYMedevac.mashCallsign .. ". " ..
-      "No active operations."
-    )
+      string.format(
+        "%s, %s. No active operations.",
+        heliUnitName, JPYMedevac.mashCallsign))
     return
   end
 
-  SRSVectorToRescueGroup(
+  SRSVectorToGroup(
     groupName, heliUnitName,
     string.format("Nearest unit, %s. ", groupName))
+end
+
+local function SRSVectorToBlueMash(heliUnitName)
+  if medevac.getSARHeli(heliUnitName) == nil then
+    return
+  end
+
+  SRSVectorToGroup(medevac.bluemash[1], heliUnitName)
 end
 
 -- A modified version of addMedevacMenuItem.
 -- This version injects additional radio menu items that are specific to this
 -- script, but sets them up so that they appear under the "MEDEVAC" menu
 -- group and look just like the ones from the MEDEVAC script itself.
-function addJPYMedevacMenuItems()
+local function addJPYMedevacMenuItems()
   -- Reschedule this very function to run itself again later.
   -- Picks up any new players as they join the server.
   timer.scheduleFunction(addJPYMedevacMenuItems, nil, timer.getTime() + 5)
@@ -487,6 +493,12 @@ function addJPYMedevacMenuItems()
           medevac.getGroupId(_unit),
           "Vector to nearest rescue", {"MEDEVAC"},
           SRSVectorToClosestRescueGroup, _unitName
+        )
+
+        missionCommands.addCommandForGroup(
+          medevac.getGroupId(_unit),
+          "Vector to " .. medevac.bluemash[1], {"MEDEVAC"},
+          SRSVectorToBlueMash, _unitName
         )
 
         missionCommands.addCommandForGroup(
